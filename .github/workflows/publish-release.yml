@@ -11,7 +11,7 @@ jobs:
     name: Crear APK firmado y publicación
     runs-on: ubuntu-latest
     env:
-      NEKO_KEYSTORE_FILE: ${{ runner.temp }}/nekoplayer-release.p12
+      NEKO_KEYSTORE_FILE: /tmp/nekoplayer-release.p12
       NEKO_KEYSTORE_PASSWORD: ${{ secrets.NEKO_KEYSTORE_PASSWORD }}
       NEKO_KEY_ALIAS: ${{ secrets.NEKO_KEY_ALIAS }}
       NEKO_KEY_PASSWORD: ${{ secrets.NEKO_KEY_PASSWORD }}
