@@ -1,0 +1,60 @@
+name: Publicar actualización de Neko Player
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Crear APK firmado y publicación
+    runs-on: ubuntu-latest
+    env:
+      NEKO_KEYSTORE_FILE: ${{ runner.temp }}/nekoplayer-release.p12
+      NEKO_KEYSTORE_PASSWORD: ${{ secrets.NEKO_KEYSTORE_PASSWORD }}
+      NEKO_KEY_ALIAS: ${{ secrets.NEKO_KEY_ALIAS }}
+      NEKO_KEY_PASSWORD: ${{ secrets.NEKO_KEY_PASSWORD }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 0.2.${{ github.run_number }}
+    steps:
+      - name: Descargar el proyecto
+        uses: actions/checkout@v6
+
+      - name: Preparar Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preparar Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Preparar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+
+      - name: Preparar clave de firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NEKO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$NEKO_KEYSTORE_PASSWORD" ] || [ -z "$NEKO_KEY_ALIAS" ] || [ -z "$NEKO_KEY_PASSWORD" ]; then
+            echo "Faltan secretos de firma. Sigue INSTRUCCIONES-ACTUALIZADOR.md." >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$NEKO_KEYSTORE_FILE"
+
+      - name: Compilar APK firmado
+        run: gradle --no-daemon :app:assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME="$VERSION_NAME"
+
+      - name: Publicar la versión para el actualizador
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Neko Player ${{ env.VERSION_NAME }}
+          body: Actualización de Neko Player.
+          files: app/build/outputs/apk/release/app-release.apk
+          make_latest: true

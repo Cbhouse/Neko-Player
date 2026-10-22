@@ -6,12 +6,12 @@ Proyecto Android nativo mínimo en Java, preparado para abrirse y compilarse con
 - Interfaz sencilla con estética de gatitos y colores pastel.
 - Selección de un archivo de audio local mediante el selector seguro de Android.
 - Reproducción, pausa y detener/volver al inicio.
-- Pantalla informativa de versión/actualizaciones como punto de partida.
+- Comprobación de nuevas versiones publicadas en GitHub y descarga de la APK para instalarla con Android.
 
 ## Qué todavía no está implementado
 - Conexión real con YouTube o Spotify.
 - Vídeo, subtítulos, calidad de streaming o gato flotante sobre otras apps.
-- Servidor de actualizaciones. La pantalla de actualizaciones es informativa; no descarga ni instala nada todavía.
+- Publicación inicial firmada. Sigue `INSTRUCCIONES-ACTUALIZADOR.md` para configurar la clave privada en GitHub.
 
 ## Compilar el APK
 1. Instala Android Studio y un JDK 17.
@@ -20,10 +20,10 @@ Proyecto Android nativo mínimo en Java, preparado para abrirse y compilarse con
 4. En el menú selecciona **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
 5. Android Studio mostrará el enlace a `app-debug.apk` cuando la compilación termine.
 
-Para generar una versión de distribución, configura una firma propia en Android Studio. No compartas claves privadas de firma.
+Para publicar una actualización, configura los secretos de firma y ejecuta **Publicar actualización de Neko Player** en GitHub Actions. Conserva una copia privada de la clave de firma.
 
 ## Próximos pasos
 1. Compilar y probar el reproductor local.
 2. Añadir pruebas y gestión de errores.
 3. Revisar las vías oficiales permitidas para integraciones de YouTube/Spotify.
-4. Publicar un endpoint HTTPS de metadatos de versión y diseñar actualizaciones seguras. Las actualizaciones de código Android normalmente requieren instalación autorizada o distribución por una tienda.
+4. Publicar versiones firmadas con GitHub Releases. Android abrirá su instalador y puede pedir confirmación para completar cada actualización.

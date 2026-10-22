@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+def appVersionCode = (project.findProperty('VERSION_CODE') ?: '1').toString().toInteger()
+def appVersionName = (project.findProperty('VERSION_NAME') ?: '0.1.0').toString()
+def signingStore = System.getenv('NEKO_KEYSTORE_FILE')
+
 android {
     namespace 'com.nekoplayer.app'
     compileSdk 35
@@ -8,7 +12,29 @@ android {
         applicationId 'com.nekoplayer.app'
         minSdk 23
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
+        versionCode appVersionCode
+        versionName appVersionName
     }
+
+    signingConfigs {
+        release {
+            if (signingStore != null && !signingStore.isEmpty()) {
+                storeFile file(signingStore)
+                storeType 'PKCS12'
+                storePassword System.getenv('NEKO_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('NEKO_KEY_ALIAS')
+                keyPassword System.getenv('NEKO_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.15.0'
 }
