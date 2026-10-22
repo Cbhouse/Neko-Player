@@ -8,6 +8,11 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.LinearGradient;
+import android.graphics.Shader;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -20,6 +25,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -76,6 +83,7 @@ public class MainActivity extends Activity {
     private final int bg = Color.rgb(249, 245, 255);
     private final int purple = Color.rgb(125, 88, 190);
     private final int ink = Color.rgb(48, 35, 68);
+    private int activeTab = 0;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -88,14 +96,17 @@ public class MainActivity extends Activity {
     private int dp(float value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
 
     private LinearLayout makeScreen() {
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(bg);
+        root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0xFFF8F4FF, 0xFFF2EAFE, 0xFFF9F6FF}));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(20), dp(12), dp(20), dp(20));
+        body.setPadding(dp(10), dp(8), dp(10), dp(4));
         scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(bottomNavigation());
@@ -105,17 +116,26 @@ public class MainActivity extends Activity {
     private LinearLayout bottomNavigation() {
         LinearLayout nav = new LinearLayout(this);
         nav.setGravity(Gravity.CENTER);
+        nav.setPadding(dp(12), dp(6), dp(12), dp(6));
         nav.setBackground(cardShape(Color.WHITE, 0xFFE8DDF5, 0));
-        String[] labels = {"♫\nInicio", "▶\nReproductor", "⚙\nAjustes"};
+        String[] labels = {"⌂\nInicio", "▷\nReproductor", "⚙\nAjustes"};
         Runnable[] actions = {this::buildHome, this::buildPlayer, this::buildSettings};
         for (int i = 0; i < labels.length; i++) {
+            final int index = i;
             final Runnable action = actions[i];
             TextView item = new TextView(this);
-            item.setText(labels[i]); item.setTextSize(12); item.setTextColor(purple);
-            item.setGravity(Gravity.CENTER); item.setPadding(4, dp(10), 4, dp(10));
-            nav.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
+            item.setText(labels[i]); item.setTextSize(14); item.setTextColor(i == activeTab ? purple : 0xFF777198);
+            item.setGravity(Gravity.CENTER); item.setPadding(4, dp(8), 4, dp(8));
+            item.setTypeface(null, i == activeTab ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            if (i == activeTab) item.setBackground(cardShape(0xFFF3EDFC, 0xFFF3EDFC, 0));
+            LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(0, dp(58), 1);
+            itemLp.setMargins(dp(4), 0, dp(4), 0);
+            nav.addView(item, itemLp);
             item.setOnClickListener(v -> action.run());
         }
+        LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(-1, dp(72));
+        navLp.setMargins(dp(0), 0, dp(0), 0);
+        nav.setLayoutParams(navLp);
         return nav;
     }
 
@@ -157,39 +177,82 @@ public class MainActivity extends Activity {
     }
 
     private void addHeader(String subtitle) {
-        TextView title = label("Neko Player  🐾", 29, ink, Gravity.CENTER_VERTICAL);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        title.setPadding(0, dp(10), 0, dp(2)); body.addView(title);
-        body.addView(label(subtitle, 14, purple, Gravity.CENTER_VERTICAL));
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, dp(2), 0, dp(12));
+        TextView logo = new TextView(this); logo.setGravity(Gravity.CENTER); logo.setContentDescription("Neko Player");
+        logo.setBackground(cardShape(0xFFF1EAFE, 0xFFF1EAFE, 0));
+        logo.setText("●"); logo.setTextColor(0xFFFFF9FA); logo.setTextSize(26);
+        android.graphics.drawable.GradientDrawable logoShape = new android.graphics.drawable.GradientDrawable();
+        logoShape.setShape(android.graphics.drawable.GradientDrawable.OVAL); logoShape.setColor(0xFFFFFAF8); logoShape.setStroke(dp(2), 0xFF6840A1); logo.setBackground(logoShape);
+        header.addView(logo, new LinearLayout.LayoutParams(dp(54), dp(58)));
+        LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
+        TextView title = label("Neko Player", 28, ink, Gravity.CENTER_VERTICAL);
+        title.setTypeface(null, android.graphics.Typeface.BOLD); title.setPadding(0, 0, 0, 0);
+        words.addView(title);
+        TextView sub = label(subtitle, 13, 0xFF777198, Gravity.CENTER_VERTICAL); sub.setPadding(0, 0, 0, 0);
+        words.addView(sub);
+        header.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView settings = new TextView(this); settings.setGravity(Gravity.CENTER); settings.setText("⚙"); settings.setTextSize(21); settings.setTextColor(ink);
+        settings.setBackground(cardShape(Color.WHITE, 0xFFF0EAF8, 0));
+        header.addView(settings, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        settings.setOnClickListener(v -> buildSettings());
+        body.addView(header);
     }
 
     private void buildHome() {
-        makeScreen();
-        addHeader("Música y videos, con un toque de ternura");
+        activeTab = 0;
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
 
-        LinearLayout welcome = card();
-        welcome.setGravity(Gravity.CENTER);
-        TextView heading = label("Tu música, a tu manera", 20, ink, Gravity.CENTER);
-        heading.setTypeface(null, android.graphics.Typeface.BOLD); welcome.addView(heading);
-        welcome.addView(label("Elige un archivo de tu teléfono y deja que el gatito baile contigo", 14, purple, Gravity.CENTER));
-        welcome.addView(new DancingCatView(this), new LinearLayout.LayoutParams(-1, dp(170)));
-        body.addView(welcome);
+        FrameLayout screen = new FrameLayout(this);
+        ImageView reference = new ImageView(this);
+        reference.setImageResource(com.nekoplayer.app.R.drawable.neko_menu_reference);
+        reference.setScaleType(ImageView.ScaleType.FIT_XY);
+        screen.addView(reference, new FrameLayout.LayoutParams(-1, -1));
+        View controls = new View(this) {
+            private float downX, downY;
+            @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) { downX = event.getX() / getWidth(); downY = event.getY() / getHeight(); return true; }
+                if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                    float x = event.getX() / getWidth(), y = event.getY() / getHeight();
+                    if (Math.abs(x - downX) + Math.abs(y - downY) > .08f) return true;
+                    if (y > .365f && y < .47f) pickAudio();
+                    else if (y > .47f && y < .58f) pickVideo();
+                    else if ((y < .09f && x > .84f) || (y > .92f && x > .68f)) buildSettings();
+                    else if (y > .92f && x > .34f && x < .68f) buildPlayer();
+                    return true;
+                }
+                return true;
+            }
+        };
+        screen.addView(controls, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(screen);
+    }
 
-        body.addView(actionButton("♫   Abrir música del teléfono", purple, Color.WHITE, this::pickAudio));
-        body.addView(actionButton("▣   Abrir video del teléfono", Color.WHITE, ink, this::pickVideo));
-
-        LinearLayout now = card();
-        now.addView(label("REPRODUCCIÓN", 12, purple, Gravity.START));
-        String current = selectedVideo != null ? displayName(selectedVideo) : selectedAudio != null ? displayName(selectedAudio) : "Aún no hay nada reproduciéndose";
-        now.addView(label(current, 16, ink, Gravity.START));
-        now.addView(label(selectedVideo != null ? "Video local" : selectedAudio != null ? (isPlaying ? "Reproduciendo ahora" : "Audio listo") : "Tus archivos permanecen en tu dispositivo", 13, purple, Gravity.START));
-        body.addView(now);
-
-        body.addView(label("YouTube y Spotify podrán añadirse más adelante. Por ahora puedes reproducir archivos locales.", 12, ink, Gravity.CENTER));
-        setContentView(root);
+    private View homeAction(String icon, String title, String subtitle, int fill, int foreground, Runnable action) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(16), dp(10), dp(14), dp(10));
+        row.setBackground(cardShape(fill, fill == Color.WHITE ? 0xFFE9E1F3 : fill, 1));
+        TextView badge = label(icon, 27, foreground, Gravity.CENTER); badge.setBackground(cardShape(fill == Color.WHITE ? 0xFFEFEAF9 : 0x568A5CE0, fill, 0));
+        row.addView(badge, new LinearLayout.LayoutParams(dp(72), dp(72)));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.setPadding(dp(14), 0, dp(4), 0);
+        TextView name = label(title, 16, foreground, Gravity.START); name.setTypeface(null, android.graphics.Typeface.BOLD); copy.addView(name);
+        copy.addView(label(subtitle, 13, fill == Color.WHITE ? 0xFF777198 : 0xFFE4D7FF, Gravity.START));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = label("›", 28, foreground, Gravity.CENTER); arrow.setBackground(cardShape(fill == Color.WHITE ? Color.WHITE : 0x337A45C6, fill, 0));
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        row.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(84)); lp.setMargins(0, dp(4), 0, dp(4)); row.setLayoutParams(lp);
+        return row;
     }
 
     private void buildPlayer() {
+        activeTab = 1;
         makeScreen();
         addHeader("Tu rincón para escuchar y mirar");
         body.addView(actionButton("♫   Elegir audio", purple, Color.WHITE, this::pickAudio));
@@ -241,6 +304,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildSettings() {
+        activeTab = 2;
         makeScreen();
         addHeader("Detalles de tu reproductor");
         LinearLayout appearance = card();
@@ -276,7 +340,7 @@ public class MainActivity extends Activity {
     private class DancingCatView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int fur = Color.WHITE;
-        private final int outline = 0xFF6F5793;
+        private final int outline = 0xFF573478;
         private final int pink = 0xFFF1AFCB;
         private final int cheek = 0xFFFFC9DB;
         private boolean attached;
@@ -285,38 +349,68 @@ public class MainActivity extends Activity {
         @Override protected void onDetachedFromWindow() { attached = false; super.onDetachedFromWindow(); }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            float scale = Math.min(getWidth() / 210f, getHeight() / 170f);
+            if (getWidth() <= 0 || getHeight() <= 0) return;
+            canvas.save();
+            Path clip = new Path(); clip.addRoundRect(new RectF(0, 0, getWidth(), getHeight()), dp(26), dp(26), Path.Direction.CW);
+            canvas.clipPath(clip);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new LinearGradient(0, 0, getWidth(), getHeight(), new int[]{0xFFE6DDFF, 0xFFF7DCFA, 0xFFD9D8FF}, null, Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+            paint.setShader(null);
+            paint.setColor(0x66FFFFFF); canvas.drawCircle(getWidth() * .88f, getHeight() * .08f, getWidth() * .36f, paint);
+            paint.setColor(0x55C4A6F7); Path hill = new Path(); hill.moveTo(0, getHeight() * .72f); hill.cubicTo(getWidth() * .22f, getHeight() * .80f, getWidth() * .25f, getHeight() * .45f, getWidth() * .50f, getHeight() * .61f); hill.cubicTo(getWidth() * .70f, getHeight() * .72f, getWidth() * .78f, getHeight() * .88f, getWidth(), getHeight() * .49f); hill.lineTo(getWidth(), getHeight()); hill.lineTo(0, getHeight()); hill.close(); canvas.drawPath(hill, paint);
+            paint.setColor(0x66EBC8F5); Path lowerWave = new Path(); lowerWave.moveTo(0, getHeight() * .87f); lowerWave.cubicTo(getWidth() * .27f, getHeight() * .75f, getWidth() * .48f, getHeight() * .93f, getWidth() * .68f, getHeight() * .83f); lowerWave.cubicTo(getWidth() * .83f, getHeight() * .77f, getWidth() * .93f, getHeight() * .94f, getWidth(), getHeight() * .80f); lowerWave.lineTo(getWidth(), getHeight()); lowerWave.lineTo(0, getHeight()); lowerWave.close(); canvas.drawPath(lowerWave, paint);
+            paint.setColor(0xFFB45FE3); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(5));
+            drawNote(canvas, getWidth() * .15f, getHeight() * .22f, dp(30)); drawNote(canvas, getWidth() * .83f, getHeight() * .64f, dp(25)); drawNote(canvas, getWidth() * .30f, getHeight() * .51f, dp(18));
+            paint.setStyle(Paint.Style.FILL); paint.setColor(0xFFA47BE5); drawSparkle(canvas, getWidth() * .72f, getHeight() * .84f, dp(10)); drawSparkle(canvas, getWidth() * .13f, getHeight() * .91f, dp(7)); drawSparkle(canvas, getWidth() * .92f, getHeight() * .78f, dp(6));
+            float scale = Math.min(getWidth() / 148f, getHeight() / 202f);
             if (scale <= 0) return;
-            float dance = (float) Math.sin(System.currentTimeMillis() / 150.0) * 4f * scale;
-            canvas.save(); canvas.translate(getWidth() / 2f, getHeight() / 2f + dance); canvas.scale(scale, scale);
-            paint.setStrokeWidth(3); paint.setStrokeCap(Paint.Cap.ROUND); paint.setStrokeJoin(Paint.Join.ROUND);
-            // Bailando: brazos alternan y el cuerpo rebota suavemente.
+            float dance = (float) Math.sin(System.currentTimeMillis() / 150.0) * 3f * scale;
+            canvas.save(); canvas.translate(getWidth() * .56f, getHeight() * .69f + dance); canvas.scale(scale, scale);
+            paint.setStrokeWidth(4); paint.setStrokeCap(Paint.Cap.ROUND); paint.setStrokeJoin(Paint.Join.ROUND);
+            // Brazos elevados, vestido/cuerpo redondeado y piernas abiertas para una postura alegre.
             paint.setColor(fur); paint.setStyle(Paint.Style.FILL);
-            canvas.drawOval(new RectF(-28, 20, 28, 82), paint);
-            paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawOval(new RectF(-28, 20, 28, 82), paint); paint.setStyle(Paint.Style.FILL);
+            canvas.drawOval(new RectF(-34, 18, 35, 96), paint);
+            paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawOval(new RectF(-34, 18, 35, 96), paint); paint.setStyle(Paint.Style.FILL);
+            paint.setColor(fur); canvas.drawOval(new RectF(-20, 84, 4, 106), paint); canvas.drawOval(new RectF(14, 83, 38, 105), paint);
+            paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawOval(new RectF(-20, 84, 4, 106), paint); canvas.drawOval(new RectF(14, 83, 38, 105), paint); paint.setStyle(Paint.Style.FILL);
             paint.setColor(fur);
-            Path ear = new Path(); ear.moveTo(-34, -27); ear.lineTo(-29, -65); ear.lineTo(-2, -41); ear.close();
+            Path ear = new Path(); ear.moveTo(-38, -23); ear.lineTo(-31, -82); ear.lineTo(3, -48); ear.close();
             canvas.drawPath(ear, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawPath(ear, paint); paint.setStyle(Paint.Style.FILL);
-            Path otherEar = new Path(); otherEar.moveTo(4, -41); otherEar.lineTo(31, -65); otherEar.lineTo(36, -25); otherEar.close();
+            Path otherEar = new Path(); otherEar.moveTo(-2, -48); otherEar.lineTo(38, -82); otherEar.lineTo(40, -21); otherEar.close();
             paint.setColor(fur); canvas.drawPath(otherEar, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawPath(otherEar, paint); paint.setStyle(Paint.Style.FILL);
-            paint.setColor(pink); Path inner1 = new Path(); inner1.moveTo(-29, -38); inner1.lineTo(-27, -55); inner1.lineTo(-14, -43); inner1.close(); canvas.drawPath(inner1, paint);
-            Path inner2 = new Path(); inner2.moveTo(17, -43); inner2.lineTo(30, -55); inner2.lineTo(32, -37); inner2.close(); canvas.drawPath(inner2, paint);
-            paint.setColor(fur); canvas.drawCircle(0, -18, 37, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawCircle(0, -18, 37, paint); paint.setStyle(Paint.Style.FILL);
+            paint.setColor(pink); Path inner1 = new Path(); inner1.moveTo(-30, -40); inner1.lineTo(-27, -66); inner1.lineTo(-11, -49); inner1.close(); canvas.drawPath(inner1, paint);
+            Path inner2 = new Path(); inner2.moveTo(13, -49); inner2.lineTo(34, -67); inner2.lineTo(35, -38); inner2.close(); canvas.drawPath(inner2, paint);
+            paint.setColor(fur); canvas.drawCircle(0, -15, 43, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawCircle(0, -15, 43, paint); paint.setStyle(Paint.Style.FILL);
             paint.setColor(purple); paint.setStrokeWidth(5); paint.setStyle(Paint.Style.STROKE);
-            canvas.drawArc(new RectF(-31, -60, 31, 22), 180, 180, false, paint);
-            paint.setStyle(Paint.Style.FILL); canvas.drawRoundRect(new RectF(-40, -29, -32, -5), 5, 5, paint); canvas.drawRoundRect(new RectF(32, -29, 40, -5), 5, 5, paint);
+            canvas.drawArc(new RectF(-39, -69, 39, 30), 180, 180, false, paint);
+            paint.setStyle(Paint.Style.FILL); canvas.drawRoundRect(new RectF(-49, -27, -39, 2), 5, 5, paint); canvas.drawRoundRect(new RectF(39, -27, 49, 2), 5, 5, paint);
             paint.setStrokeWidth(3);
-            paint.setColor(outline); canvas.drawCircle(-12, -20, 2.7f, paint); canvas.drawCircle(12, -20, 2.7f, paint);
-            paint.setColor(cheek); canvas.drawOval(new RectF(-28, -12, -17, -5), paint); canvas.drawOval(new RectF(17, -12, 28, -5), paint);
-            paint.setColor(pink); Path nose = new Path(); nose.moveTo(-4, -12); nose.lineTo(4, -12); nose.lineTo(0, -8); nose.close(); canvas.drawPath(nose, paint);
+            paint.setColor(outline); canvas.drawArc(new RectF(-29, -31, -8, -9), 205, 130, false, paint); canvas.drawArc(new RectF(8, -31, 29, -9), 205, 130, false, paint);
+            paint.setColor(cheek); canvas.drawOval(new RectF(-34, -12, -17, -3), paint); canvas.drawOval(new RectF(17, -12, 34, -3), paint);
+            paint.setColor(pink); Path nose = new Path(); nose.moveTo(-5, -13); nose.lineTo(5, -13); nose.lineTo(0, -7); nose.close(); canvas.drawPath(nose, paint);
             paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawArc(new RectF(-5, -11, 0, -4), 0, 90, false, paint); canvas.drawArc(new RectF(0, -11, 5, -4), 90, 90, false, paint);
-            canvas.drawLine(-27, -11, -44, -15, paint); canvas.drawLine(-26, -7, -43, -7, paint); canvas.drawLine(27, -11, 44, -15, paint); canvas.drawLine(26, -7, 43, -7, paint);
+            canvas.drawLine(-30, -10, -48, -15, paint); canvas.drawLine(-30, -5, -48, -4, paint); canvas.drawLine(30, -10, 48, -15, paint); canvas.drawLine(30, -5, 48, -4, paint);
             float arm = (float) Math.sin(System.currentTimeMillis() / 120.0) * 10f;
-            canvas.drawLine(-20, 31, -46, 9 + arm, paint); canvas.drawLine(-46, 9 + arm, -48, -2 + arm, paint);
-            canvas.drawLine(20, 31, 46, 9 - arm, paint); canvas.drawLine(46, 9 - arm, 48, -2 - arm, paint);
-            canvas.drawLine(-16, 76, -24, 91, paint); canvas.drawLine(16, 76, 24, 91, paint);
-            paint.setStyle(Paint.Style.FILL); paint.setTextSize(22); paint.setColor(purple); canvas.drawText("♫", 53, -30 + arm, paint); canvas.drawText("♪", -64, 18 - arm, paint);
+            canvas.drawLine(-27, 34, -54, 13 + arm, paint); canvas.drawLine(-54, 13 + arm, -62, -5 + arm, paint);
+            canvas.drawLine(27, 34, 53, 10 - arm, paint); canvas.drawLine(53, 10 - arm, 63, -7 - arm, paint);
+            paint.setColor(fur); canvas.drawCircle(-63, -7 + arm, 9, paint); canvas.drawCircle(64, -8 - arm, 9, paint);
+            paint.setColor(outline); canvas.drawCircle(-63, -7 + arm, 9, paint); canvas.drawCircle(64, -8 - arm, 9, paint);
+            paint.setColor(cheek); canvas.drawCircle(-63, -7 + arm, 3, paint); canvas.drawCircle(64, -8 - arm, 3, paint);
+            canvas.drawLine(-18, 87, -27, 101, paint); canvas.drawLine(18, 87, 27, 101, paint);
             canvas.restore(); if (attached) postInvalidateDelayed(45);
+        }
+
+        private void drawNote(Canvas canvas, float x, float y, float size) {
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(Math.max(dp(2), size * .12f));
+            canvas.drawLine(x + size * .48f, y - size, x + size * .48f, y + size * .45f, paint);
+            canvas.drawLine(x + size * .48f, y - size, x + size, y - size * 1.15f, paint);
+            canvas.drawLine(x + size, y - size * 1.15f, x + size, y + size * .1f, paint);
+            paint.setStyle(Paint.Style.FILL); canvas.drawOval(x, y + size * .32f, x + size * .52f, y + size * .65f, paint); canvas.drawOval(x + size * .52f, y, x + size * 1.02f, y + size * .32f, paint);
+        }
+
+        private void drawSparkle(Canvas canvas, float x, float y, float size) {
+            Path star = new Path(); star.moveTo(x, y-size); star.quadTo(x+size*.18f,y-size*.2f,x+size,y); star.quadTo(x+size*.18f,y+size*.2f,x,y+size); star.quadTo(x-size*.18f,y+size*.2f,x-size,y); star.quadTo(x-size*.18f,y-size*.2f,x,y-size); star.close(); canvas.drawPath(star, paint);
         }
     }
 
@@ -606,3 +700,4 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 }
+
