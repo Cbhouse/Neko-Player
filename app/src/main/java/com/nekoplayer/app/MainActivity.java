@@ -4,6 +4,11 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
@@ -15,9 +20,11 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.VideoView;
 import androidx.core.content.FileProvider;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -35,13 +42,31 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 41;
+    private static final int PICK_VIDEO = 42;
     private LinearLayout root;
+    private LinearLayout body;
     private TextView trackTitle, statusText, playButton;
+    private TextView elapsedText, durationText;
+    private SeekBar progressBar;
     private MediaPlayer player;
+    private VideoView videoView;
     private Uri selectedAudio;
+    private Uri selectedVideo;
+    private boolean isSeeking;
+    private boolean audioPrepared;
     private boolean isPlaying = false;
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable playbackTicker = new Runnable() {
+        @Override public void run() {
+            if (player == null || !audioPrepared || progressBar == null) return;
+            if (!isSeeking) {
+                progressBar.setProgress(player.getCurrentPosition());
+                if (elapsedText != null) elapsedText.setText(formatTime(player.getCurrentPosition()));
+            }
+            if (isPlaying) mainHandler.postDelayed(this, 500);
+        }
+    };
     private File pendingUpdateApk;
     private boolean openingInstallSettings;
 
@@ -60,52 +85,239 @@ public class MainActivity extends Activity {
         buildHome();
     }
 
-    private TextView text(String value, int size, int color) {
+    private int dp(float value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
+
+    private LinearLayout makeScreen() {
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(bg);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(20), dp(12), dp(20), dp(20));
+        scroll.addView(body);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(bottomNavigation());
+        return root;
+    }
+
+    private LinearLayout bottomNavigation() {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setGravity(Gravity.CENTER);
+        nav.setBackground(cardShape(Color.WHITE, 0xFFE8DDF5, 0));
+        String[] labels = {"♫\nInicio", "▶\nReproductor", "⚙\nAjustes"};
+        Runnable[] actions = {this::buildHome, this::buildPlayer, this::buildSettings};
+        for (int i = 0; i < labels.length; i++) {
+            final Runnable action = actions[i];
+            TextView item = new TextView(this);
+            item.setText(labels[i]); item.setTextSize(12); item.setTextColor(purple);
+            item.setGravity(Gravity.CENTER); item.setPadding(4, dp(10), 4, dp(10));
+            nav.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
+            item.setOnClickListener(v -> action.run());
+        }
+        return nav;
+    }
+
+    private TextView label(String value, int size, int color, int gravity) {
         TextView t = new TextView(this);
-        t.setText(value); t.setTextSize(size); t.setTextColor(color);
-        t.setGravity(Gravity.CENTER); t.setPadding(10, 8, 10, 8);
+        t.setText(value); t.setTextSize(size); t.setTextColor(color); t.setGravity(gravity);
+        t.setPadding(dp(4), dp(5), dp(4), dp(5));
         return t;
     }
 
-    private Button button(String value) {
-        Button b = new Button(this); b.setText(value); b.setTextColor(ink);
-        b.setAllCaps(false); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
-        return b;
+    private GradientDrawable cardShape(int fill, int stroke, int strokeWidth) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(fill); shape.setCornerRadius(dp(22));
+        if (strokeWidth > 0) shape.setStroke(dp(strokeWidth), stroke);
+        return shape;
     }
 
-    private LinearLayout column() {
-        LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(22, 14, 22, 18); l.setBackgroundColor(bg); return l;
+    private LinearLayout card() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setBackground(cardShape(Color.WHITE, 0xFFE9DFF3, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(9), 0, dp(9));
+        card.setLayoutParams(lp);
+        return card;
+    }
+
+    private TextView actionButton(String value, int fill, int foreground, Runnable action) {
+        TextView button = label(value, 15, foreground, Gravity.CENTER);
+        button.setTypeface(null, android.graphics.Typeface.BOLD);
+        button.setPadding(dp(16), dp(14), dp(16), dp(14));
+        button.setBackground(cardShape(fill, fill == Color.WHITE ? 0xFFD8CBE7 : fill, 1));
+        button.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(6), 0, dp(6));
+        button.setLayoutParams(lp);
+        return button;
+    }
+
+    private void addHeader(String subtitle) {
+        TextView title = label("Neko Player  🐾", 29, ink, Gravity.CENTER_VERTICAL);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setPadding(0, dp(10), 0, dp(2)); body.addView(title);
+        body.addView(label(subtitle, 14, purple, Gravity.CENTER_VERTICAL));
     }
 
     private void buildHome() {
-        root = column(); root.setGravity(Gravity.CENTER_HORIZONTAL);
-        TextView title = text("Neko Player  ♡", 29, ink); title.setPadding(8, 18, 8, 4); root.addView(title);
-        root.addView(text("Tu música, en compañía de gatitos", 14, purple));
-        TextView cat = text("ฅ^•ﻌ•^ฅ", 56, purple); cat.setPadding(8, 25, 8, 18); root.addView(cat);
-        root.addView(text("Un reproductor sencillo y sin distracciones", 15, ink));
+        makeScreen();
+        addHeader("Música y videos, con un toque de ternura");
 
-        Button choose = button("♫  Elegir archivo de audio");
-        choose.setOnClickListener(v -> pickAudio()); root.addView(choose, fullWidth());
+        LinearLayout welcome = card();
+        welcome.setGravity(Gravity.CENTER);
+        TextView heading = label("Tu música, a tu manera", 20, ink, Gravity.CENTER);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD); welcome.addView(heading);
+        welcome.addView(label("Elige un archivo de tu teléfono y deja que el gatito baile contigo", 14, purple, Gravity.CENTER));
+        welcome.addView(new DancingCatView(this), new LinearLayout.LayoutParams(-1, dp(170)));
+        body.addView(welcome);
 
-        trackTitle = text("Todavía no has elegido una canción", 16, ink); trackTitle.setPadding(8, 18, 8, 4); root.addView(trackTitle);
-        statusText = text("Elige un archivo de audio de tu dispositivo para comenzar.", 13, purple); root.addView(statusText);
-        SeekBar seek = new SeekBar(this); seek.setMax(100); seek.setProgress(0); seek.setEnabled(false); root.addView(seek, fullWidth());
+        body.addView(actionButton("♫   Abrir música del teléfono", purple, Color.WHITE, this::pickAudio));
+        body.addView(actionButton("▣   Abrir video del teléfono", Color.WHITE, ink, this::pickVideo));
 
-        LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER); controls.setOrientation(LinearLayout.HORIZONTAL);
-        Button stop = button("■"); stop.setOnClickListener(v -> stopAudio()); controls.addView(stop);
-        playButton = text("▶", 24, Color.WHITE); playButton.setBackgroundTintList(null); playButton.setBackgroundColor(purple);
-        playButton.setGravity(Gravity.CENTER); playButton.setPadding(25, 12, 25, 12); playButton.setOnClickListener(v -> togglePlayback()); controls.addView(playButton);
-        root.addView(controls);
+        LinearLayout now = card();
+        now.addView(label("REPRODUCCIÓN", 12, purple, Gravity.START));
+        String current = selectedVideo != null ? displayName(selectedVideo) : selectedAudio != null ? displayName(selectedAudio) : "Aún no hay nada reproduciéndose";
+        now.addView(label(current, 16, ink, Gravity.START));
+        now.addView(label(selectedVideo != null ? "Video local" : selectedAudio != null ? (isPlaying ? "Reproduciendo ahora" : "Audio listo") : "Tus archivos permanecen en tu dispositivo", 13, purple, Gravity.START));
+        body.addView(now);
 
-        TextView note = text("YouTube y Spotify · preparación futura", 14, ink); note.setPadding(8, 25, 8, 0); root.addView(note);
-        Button updates = button("⚙  Actualizaciones y versión"); updates.setOnClickListener(v -> showUpdates()); root.addView(updates, fullWidth());
-        root.addView(text("Versión 0.1.0 · base inicial", 12, purple));
+        body.addView(label("YouTube y Spotify podrán añadirse más adelante. Por ahora puedes reproducir archivos locales.", 12, ink, Gravity.CENTER));
         setContentView(root);
+    }
+
+    private void buildPlayer() {
+        makeScreen();
+        addHeader("Tu rincón para escuchar y mirar");
+        body.addView(actionButton("♫   Elegir audio", purple, Color.WHITE, this::pickAudio));
+        body.addView(actionButton("▣   Elegir video", Color.WHITE, ink, this::pickVideo));
+
+        if (selectedVideo != null) {
+            LinearLayout videoCard = card();
+            videoCard.addView(label(displayName(selectedVideo), 15, ink, Gravity.START));
+            videoView = new VideoView(this);
+            videoView.setVideoURI(selectedVideo);
+            android.widget.MediaController controls = new android.widget.MediaController(this);
+            controls.setAnchorView(videoView); videoView.setMediaController(controls);
+            videoCard.addView(videoView, new LinearLayout.LayoutParams(-1, dp(230)));
+            body.addView(videoCard);
+            videoView.setOnPreparedListener(mp -> videoView.start());
+        } else {
+            videoView = null;
+            LinearLayout musicCard = card(); musicCard.setGravity(Gravity.CENTER);
+            musicCard.addView(new DancingCatView(this), new LinearLayout.LayoutParams(-1, dp(180)));
+            trackTitle = label(selectedAudio == null ? "Elige una canción para empezar" : displayName(selectedAudio), 17, ink, Gravity.CENTER);
+            trackTitle.setTypeface(null, android.graphics.Typeface.BOLD); musicCard.addView(trackTitle);
+            statusText = label(selectedAudio == null ? "El gatito está esperando música" : (isPlaying ? "Reproduciendo" : "En pausa"), 13, purple, Gravity.CENTER);
+            musicCard.addView(statusText);
+            progressBar = new SeekBar(this); progressBar.setMax(!audioPrepared ? 1000 : Math.max(player.getDuration(), 1));
+            if (audioPrepared) progressBar.setProgress(player.getCurrentPosition());
+            musicCard.addView(progressBar, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout times = new LinearLayout(this); times.setGravity(Gravity.CENTER_VERTICAL);
+            elapsedText = label(!audioPrepared ? "0:00" : formatTime(player.getCurrentPosition()), 12, purple, Gravity.START);
+            durationText = label(!audioPrepared ? "0:00" : formatTime(player.getDuration()), 12, purple, Gravity.END);
+            times.addView(elapsedText, new LinearLayout.LayoutParams(0, -2, 1));
+            times.addView(durationText, new LinearLayout.LayoutParams(0, -2, 1)); musicCard.addView(times);
+            progressBar.setEnabled(audioPrepared);
+            progressBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) { if (fromUser && elapsedText != null) elapsedText.setText(formatTime(progress)); }
+                @Override public void onStartTrackingTouch(SeekBar seekBar) { isSeeking = true; }
+                @Override public void onStopTrackingTouch(SeekBar seekBar) { isSeeking = false; if (player != null && audioPrepared) player.seekTo(seekBar.getProgress()); }
+            });
+            LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER);
+            TextView stop = actionButton("■", Color.WHITE, ink, this::stopAudio);
+            playButton = actionButton(isPlaying ? "Ⅱ" : "▶", purple, Color.WHITE, this::togglePlayback);
+            controls.addView(stop, new LinearLayout.LayoutParams(0, -2, 1));
+            controls.addView(playButton, new LinearLayout.LayoutParams(0, -2, 1));
+            musicCard.addView(controls);
+            body.addView(musicCard);
+        }
+        setContentView(root);
+        if (isPlaying) mainHandler.removeCallbacks(playbackTicker);
+        if (isPlaying) mainHandler.post(playbackTicker);
+    }
+
+    private void buildSettings() {
+        makeScreen();
+        addHeader("Detalles de tu reproductor");
+        LinearLayout appearance = card();
+        appearance.addView(label("Un espacio suave y sin distracciones", 18, ink, Gravity.START));
+        appearance.addView(label("Neko Player reproduce archivos de audio y video guardados en tu teléfono.", 14, purple, Gravity.START));
+        body.addView(appearance);
+        body.addView(actionButton("↻   Buscar actualizaciones", purple, Color.WHITE, this::showUpdates));
+        body.addView(label("La conexión con YouTube y Spotify todavía no está disponible.", 13, ink, Gravity.CENTER));
+        setContentView(root);
+    }
+
+    private String displayName(Uri uri) {
+        if (uri == null) return "";
+        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (column >= 0) return cursor.getString(column);
+            }
+        } catch (Exception ignored) { }
+        String last = uri.getLastPathSegment();
+        return last == null ? "Archivo seleccionado" : last;
+    }
+
+    private String formatTime(int milliseconds) {
+        int total = Math.max(0, milliseconds / 1000);
+        return String.format(java.util.Locale.getDefault(), "%d:%02d", total / 60, total % 60);
     }
 
     private LinearLayout.LayoutParams fullWidth() {
         return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    private class DancingCatView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int fur = Color.WHITE;
+        private final int outline = 0xFF6F5793;
+        private final int pink = 0xFFF1AFCB;
+        private final int cheek = 0xFFFFC9DB;
+        private boolean attached;
+        DancingCatView(android.content.Context context) { super(context); }
+        @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); attached = true; }
+        @Override protected void onDetachedFromWindow() { attached = false; super.onDetachedFromWindow(); }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float scale = Math.min(getWidth() / 210f, getHeight() / 170f);
+            if (scale <= 0) return;
+            float dance = (float) Math.sin(System.currentTimeMillis() / 150.0) * 4f * scale;
+            canvas.save(); canvas.translate(getWidth() / 2f, getHeight() / 2f + dance); canvas.scale(scale, scale);
+            paint.setStrokeWidth(3); paint.setStrokeCap(Paint.Cap.ROUND); paint.setStrokeJoin(Paint.Join.ROUND);
+            // Bailando: brazos alternan y el cuerpo rebota suavemente.
+            paint.setColor(fur); paint.setStyle(Paint.Style.FILL);
+            canvas.drawOval(new RectF(-28, 20, 28, 82), paint);
+            paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawOval(new RectF(-28, 20, 28, 82), paint); paint.setStyle(Paint.Style.FILL);
+            paint.setColor(fur);
+            Path ear = new Path(); ear.moveTo(-34, -27); ear.lineTo(-29, -65); ear.lineTo(-2, -41); ear.close();
+            canvas.drawPath(ear, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawPath(ear, paint); paint.setStyle(Paint.Style.FILL);
+            Path otherEar = new Path(); otherEar.moveTo(4, -41); otherEar.lineTo(31, -65); otherEar.lineTo(36, -25); otherEar.close();
+            paint.setColor(fur); canvas.drawPath(otherEar, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawPath(otherEar, paint); paint.setStyle(Paint.Style.FILL);
+            paint.setColor(pink); Path inner1 = new Path(); inner1.moveTo(-29, -38); inner1.lineTo(-27, -55); inner1.lineTo(-14, -43); inner1.close(); canvas.drawPath(inner1, paint);
+            Path inner2 = new Path(); inner2.moveTo(17, -43); inner2.lineTo(30, -55); inner2.lineTo(32, -37); inner2.close(); canvas.drawPath(inner2, paint);
+            paint.setColor(fur); canvas.drawCircle(0, -18, 37, paint); paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawCircle(0, -18, 37, paint); paint.setStyle(Paint.Style.FILL);
+            paint.setColor(purple); paint.setStrokeWidth(5); paint.setStyle(Paint.Style.STROKE);
+            canvas.drawArc(new RectF(-31, -60, 31, 22), 180, 180, false, paint);
+            paint.setStyle(Paint.Style.FILL); canvas.drawRoundRect(new RectF(-40, -29, -32, -5), 5, 5, paint); canvas.drawRoundRect(new RectF(32, -29, 40, -5), 5, 5, paint);
+            paint.setStrokeWidth(3);
+            paint.setColor(outline); canvas.drawCircle(-12, -20, 2.7f, paint); canvas.drawCircle(12, -20, 2.7f, paint);
+            paint.setColor(cheek); canvas.drawOval(new RectF(-28, -12, -17, -5), paint); canvas.drawOval(new RectF(17, -12, 28, -5), paint);
+            paint.setColor(pink); Path nose = new Path(); nose.moveTo(-4, -12); nose.lineTo(4, -12); nose.lineTo(0, -8); nose.close(); canvas.drawPath(nose, paint);
+            paint.setColor(outline); paint.setStyle(Paint.Style.STROKE); canvas.drawArc(new RectF(-5, -11, 0, -4), 0, 90, false, paint); canvas.drawArc(new RectF(0, -11, 5, -4), 90, 90, false, paint);
+            canvas.drawLine(-27, -11, -44, -15, paint); canvas.drawLine(-26, -7, -43, -7, paint); canvas.drawLine(27, -11, 44, -15, paint); canvas.drawLine(26, -7, 43, -7, paint);
+            float arm = (float) Math.sin(System.currentTimeMillis() / 120.0) * 10f;
+            canvas.drawLine(-20, 31, -46, 9 + arm, paint); canvas.drawLine(-46, 9 + arm, -48, -2 + arm, paint);
+            canvas.drawLine(20, 31, 46, 9 - arm, paint); canvas.drawLine(46, 9 - arm, 48, -2 - arm, paint);
+            canvas.drawLine(-16, 76, -24, 91, paint); canvas.drawLine(16, 76, 24, 91, paint);
+            paint.setStyle(Paint.Style.FILL); paint.setTextSize(22); paint.setColor(purple); canvas.drawText("♫", 53, -30 + arm, paint); canvas.drawText("♪", -64, 18 - arm, paint);
+            canvas.restore(); if (attached) postInvalidateDelayed(45);
+        }
     }
 
     private void pickAudio() {
@@ -114,35 +326,69 @@ public class MainActivity extends Activity {
         startActivityForResult(intent, PICK_AUDIO);
     }
 
+    private void pickVideo() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("video/*");
+        startActivityForResult(intent, PICK_VIDEO);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_AUDIO && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            selectedAudio = data.getData();
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        if (requestCode == PICK_AUDIO) {
+            selectedAudio = data.getData(); selectedVideo = null;
+            if (videoView != null) { try { videoView.stopPlayback(); } catch (Exception ignored) { } videoView = null; }
             if (player != null) { player.release(); player = null; }
+            isPlaying = false; audioPrepared = false;
+            buildPlayer();
             try {
                 player = new MediaPlayer();
                 player.setDataSource(this, selectedAudio);
                 player.setOnPreparedListener(mp -> {
-                    trackTitle.setText(selectedAudio.getLastPathSegment() == null ? "Audio seleccionado" : selectedAudio.getLastPathSegment());
-                    statusText.setText("Listo para reproducir"); mp.start(); isPlaying = true; playButton.setText("Ⅱ");
+                    audioPrepared = true;
+                    if (trackTitle != null) trackTitle.setText(displayName(selectedAudio));
+                    if (statusText != null) statusText.setText("Reproduciendo ahora");
+                    if (progressBar != null) { progressBar.setMax(Math.max(mp.getDuration(), 1)); progressBar.setEnabled(true); }
+                    if (durationText != null) durationText.setText(formatTime(mp.getDuration()));
+                    mp.start(); isPlaying = true;
+                    if (playButton != null) playButton.setText("Ⅱ");
+                    mainHandler.removeCallbacks(playbackTicker); mainHandler.post(playbackTicker);
                 });
-                player.setOnCompletionListener(mp -> { isPlaying = false; playButton.setText("▶"); statusText.setText("Reproducción terminada"); });
-                player.prepareAsync(); statusText.setText("Cargando audio…");
+                player.setOnCompletionListener(mp -> {
+                    isPlaying = false;
+                    if (playButton != null) playButton.setText("▶");
+                    if (statusText != null) statusText.setText("Reproducción terminada");
+                    mainHandler.removeCallbacks(playbackTicker);
+                });
+                player.setOnErrorListener((mp, what, extra) -> {
+                    isPlaying = false;
+                    if (statusText != null) statusText.setText("No se pudo reproducir este audio.");
+                    return true;
+                });
+                if (statusText != null) statusText.setText("Cargando audio…");
+                player.prepareAsync();
             } catch (IOException e) {
-                statusText.setText("No se pudo abrir ese archivo de audio.");
+                if (statusText != null) statusText.setText("No se pudo abrir ese archivo de audio.");
                 Toast.makeText(this, "Prueba con otro archivo de audio", Toast.LENGTH_SHORT).show();
             }
+        } else if (requestCode == PICK_VIDEO) {
+            selectedVideo = data.getData(); selectedAudio = null; isPlaying = false;
+            audioPrepared = false;
+            mainHandler.removeCallbacks(playbackTicker);
+            if (player != null) { player.release(); player = null; }
+            buildPlayer();
         }
     }
 
     private void togglePlayback() {
         if (player == null) { pickAudio(); return; }
-        if (isPlaying) { player.pause(); isPlaying = false; playButton.setText("▶"); statusText.setText("En pausa"); }
-        else { player.start(); isPlaying = true; playButton.setText("Ⅱ"); statusText.setText("Reproduciendo"); }
+        if (!audioPrepared) { Toast.makeText(this, "Espera a que termine de cargar la canción", Toast.LENGTH_SHORT).show(); return; }
+        if (isPlaying) { player.pause(); isPlaying = false; if (playButton != null) playButton.setText("▶"); if (statusText != null) statusText.setText("En pausa"); mainHandler.removeCallbacks(playbackTicker); }
+        else { player.start(); isPlaying = true; if (playButton != null) playButton.setText("Ⅱ"); if (statusText != null) statusText.setText("Reproduciendo"); mainHandler.post(playbackTicker); }
     }
 
     private void stopAudio() {
-        if (player != null) { player.pause(); player.seekTo(0); isPlaying = false; playButton.setText("▶"); statusText.setText("Detenido"); }
+        if (player != null && audioPrepared) { player.pause(); player.seekTo(0); isPlaying = false; if (playButton != null) playButton.setText("▶"); if (statusText != null) statusText.setText("Detenido"); if (progressBar != null) progressBar.setProgress(0); if (elapsedText != null) elapsedText.setText("0:00"); mainHandler.removeCallbacks(playbackTicker); }
     }
 
     private void showUpdates() {
@@ -355,6 +601,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         updateExecutor.shutdownNow();
+        mainHandler.removeCallbacks(playbackTicker);
         if (player != null) { player.release(); player = null; }
         super.onDestroy();
     }

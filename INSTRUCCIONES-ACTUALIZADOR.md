@@ -14,7 +14,7 @@ La clave permanente viene en los archivos que te entregué por separado:
 
 **No subas estos archivos al repositorio ni los compartas públicamente.** Si se pierde la clave, Android no aceptará las siguientes versiones como actualización de esta app.
 
-## 2. Añade cuatro secretos al repositorio
+## 2. Añade los secretos al repositorio
 
 En GitHub abre **Settings → Secrets and variables → Actions → New repository secret**. Crea estos cuatro secretos y pega en cada campo **Secret** el contenido del archivo indicado:
 
@@ -22,8 +22,9 @@ En GitHub abre **Settings → Secrets and variables → Actions → New reposito
 |---|---|
 | `NEKO_KEYSTORE_BASE64` | `NEKO_KEYSTORE_BASE64.txt` |
 | `NEKO_KEYSTORE_PASSWORD` | `NEKO_KEYSTORE_PASSWORD.txt` |
-| `NEKO_KEY_ALIAS` | `NEKO_KEY_ALIAS.txt` |
 | `NEKO_KEY_PASSWORD` | `NEKO_KEY_PASSWORD.txt` |
+
+El flujo detecta automáticamente el alias dentro de la clave. Si ya existe el secreto `NEKO_KEY_ALIAS`, puedes dejarlo; no se utiliza.
 
 ## 3. Publica la primera versión firmada
 

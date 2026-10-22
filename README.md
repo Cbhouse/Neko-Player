@@ -1,16 +1,17 @@
-# Neko Player — Android starter 0.1.0
+# Neko Player — Android starter 0.2.0
 
 Proyecto Android nativo mínimo en Java, preparado para abrirse y compilarse con Android Studio.
 
 ## Qué funciona en esta versión
-- Interfaz sencilla con estética de gatitos y colores pastel.
-- Selección de un archivo de audio local mediante el selector seguro de Android.
-- Reproducción, pausa y detener/volver al inicio.
+- Interfaz lavanda inspirada en el diseño de Neko Player, con navegación inferior y tarjetas redondeadas.
+- Gatito dibujado y animado dentro de la pantalla del reproductor.
+- Selección y reproducción de audio local, con barra de progreso, pausa y detener.
+- Selección y reproducción de video local mediante los controles de Android.
 - Comprobación de nuevas versiones publicadas en GitHub y descarga de la APK para instalarla con Android.
 
 ## Qué todavía no está implementado
 - Conexión real con YouTube o Spotify.
-- Vídeo, subtítulos, calidad de streaming o gato flotante sobre otras apps.
+- Subtítulos, selección de calidad de streaming o gato flotante sobre otras apps.
 - Publicación inicial firmada. Sigue `INSTRUCCIONES-ACTUALIZADOR.md` para configurar la clave privada en GitHub.
 
 ## Compilar el APK
