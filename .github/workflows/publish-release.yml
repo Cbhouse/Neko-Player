@@ -13,7 +13,6 @@ jobs:
     env:
       NEKO_KEYSTORE_FILE: /tmp/nekoplayer-release.p12
       NEKO_KEYSTORE_PASSWORD: ${{ secrets.NEKO_KEYSTORE_PASSWORD }}
-      NEKO_KEY_ALIAS: ${{ secrets.NEKO_KEY_ALIAS }}
       NEKO_KEY_PASSWORD: ${{ secrets.NEKO_KEY_PASSWORD }}
       VERSION_CODE: ${{ github.run_number }}
       VERSION_NAME: 0.2.${{ github.run_number }}
@@ -41,11 +40,17 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.NEKO_KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$NEKO_KEYSTORE_PASSWORD" ] || [ -z "$NEKO_KEY_ALIAS" ] || [ -z "$NEKO_KEY_PASSWORD" ]; then
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$NEKO_KEYSTORE_PASSWORD" ] || [ -z "$NEKO_KEY_PASSWORD" ]; then
             echo "Faltan secretos de firma. Sigue INSTRUCCIONES-ACTUALIZADOR.md." >&2
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$NEKO_KEYSTORE_FILE"
+          KEY_ALIAS="$(keytool -list -keystore "$NEKO_KEYSTORE_FILE" -storepass "$NEKO_KEYSTORE_PASSWORD" 2>/dev/null | awk -F, '/PrivateKeyEntry/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1; exit}')"
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "No se encontró una clave privada en el archivo de firma." >&2
+            exit 1
+          fi
+          echo "NEKO_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
 
       - name: Compilar APK firmado
         run: gradle --no-daemon :app:assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME="$VERSION_NAME"
