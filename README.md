@@ -3,6 +3,9 @@
 Proyecto Android nativo mínimo en Java, preparado para abrirse y compilarse con Android Studio.
 
 ## Qué funciona en esta versión
+- Menú de inicio con controles Android nativos basado en la referencia, logo nuevo y mascota generados con ImageGen.
+- Entrada escalonada, respuesta al pulsar y movimiento suave del gatito y las notas. Puedes desactivarlos en Ajustes.
+- Tarjeta de reproducción que muestra el archivo seleccionado y su estado real.
 - Interfaz lavanda inspirada en el diseño de Neko Player, con navegación inferior y tarjetas redondeadas.
 - Gatito dibujado y animado dentro de la pantalla del reproductor.
 - Selección y reproducción de audio local, con barra de progreso, pausa y detener.

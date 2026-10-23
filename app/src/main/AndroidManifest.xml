@@ -5,6 +5,8 @@
     <application
         android:allowBackup="true"
         android:label="Neko Player"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true">

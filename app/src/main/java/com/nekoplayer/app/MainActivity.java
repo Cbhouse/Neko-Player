@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private final int purple = Color.rgb(125, 88, 190);
     private final int ink = Color.rgb(48, 35, 68);
     private int activeTab = 0;
+    private NekoHomeView homeScreen;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,33 +111,22 @@ public class MainActivity extends Activity {
         scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(bottomNavigation());
+        if (Build.VERSION.SDK_INT >= 35) {
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets bars = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return insets;
+            });
+            root.requestApplyInsets();
+        }
         return root;
     }
 
     private LinearLayout bottomNavigation() {
-        LinearLayout nav = new LinearLayout(this);
-        nav.setGravity(Gravity.CENTER);
-        nav.setPadding(dp(12), dp(6), dp(12), dp(6));
-        nav.setBackground(cardShape(Color.WHITE, 0xFFE8DDF5, 0));
-        String[] labels = {"⌂\nInicio", "▷\nReproductor", "⚙\nAjustes"};
-        Runnable[] actions = {this::buildHome, this::buildPlayer, this::buildSettings};
-        for (int i = 0; i < labels.length; i++) {
-            final int index = i;
-            final Runnable action = actions[i];
-            TextView item = new TextView(this);
-            item.setText(labels[i]); item.setTextSize(14); item.setTextColor(i == activeTab ? purple : 0xFF777198);
-            item.setGravity(Gravity.CENTER); item.setPadding(4, dp(8), 4, dp(8));
-            item.setTypeface(null, i == activeTab ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-            if (i == activeTab) item.setBackground(cardShape(0xFFF3EDFC, 0xFFF3EDFC, 0));
-            LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(0, dp(58), 1);
-            itemLp.setMargins(dp(4), 0, dp(4), 0);
-            nav.addView(item, itemLp);
-            item.setOnClickListener(v -> action.run());
-        }
-        LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(-1, dp(72));
-        navLp.setMargins(dp(0), 0, dp(0), 0);
-        nav.setLayoutParams(navLp);
-        return nav;
+        return new NekoNavigation(this, activeTab,
+                new Runnable[]{this::buildHome, this::buildPlayer, this::buildSettings});
     }
 
     private TextView label(String value, int size, int color, int gravity) {
@@ -180,11 +170,10 @@ public class MainActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(0, dp(2), 0, dp(12));
-        TextView logo = new TextView(this); logo.setGravity(Gravity.CENTER); logo.setContentDescription("Neko Player");
-        logo.setBackground(cardShape(0xFFF1EAFE, 0xFFF1EAFE, 0));
-        logo.setText("●"); logo.setTextColor(0xFFFFF9FA); logo.setTextSize(26);
-        android.graphics.drawable.GradientDrawable logoShape = new android.graphics.drawable.GradientDrawable();
-        logoShape.setShape(android.graphics.drawable.GradientDrawable.OVAL); logoShape.setColor(0xFFFFFAF8); logoShape.setStroke(dp(2), 0xFF6840A1); logo.setBackground(logoShape);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.neko_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setContentDescription("Logo de Neko Player");
         header.addView(logo, new LinearLayout.LayoutParams(dp(54), dp(58)));
         LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
         TextView title = label("Neko Player", 28, ink, Gravity.CENTER_VERTICAL);
@@ -202,56 +191,48 @@ public class MainActivity extends Activity {
 
     private void buildHome() {
         activeTab = 0;
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(Color.TRANSPARENT);
-        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-
-        FrameLayout screen = new FrameLayout(this);
-        ImageView reference = new ImageView(this);
-        reference.setImageResource(com.nekoplayer.app.R.drawable.neko_menu_reference);
-        reference.setScaleType(ImageView.ScaleType.FIT_XY);
-        screen.addView(reference, new FrameLayout.LayoutParams(-1, -1));
-        View controls = new View(this) {
-            private float downX, downY;
-            @Override public boolean onTouchEvent(android.view.MotionEvent event) {
-                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) { downX = event.getX() / getWidth(); downY = event.getY() / getHeight(); return true; }
-                if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                    float x = event.getX() / getWidth(), y = event.getY() / getHeight();
-                    if (Math.abs(x - downX) + Math.abs(y - downY) > .08f) return true;
-                    if (y > .365f && y < .47f) pickAudio();
-                    else if (y > .47f && y < .58f) pickVideo();
-                    else if ((y < .09f && x > .84f) || (y > .92f && x > .68f)) buildSettings();
-                    else if (y > .92f && x > .34f && x < .68f) buildPlayer();
-                    return true;
-                }
-                return true;
-            }
-        };
-        screen.addView(controls, new FrameLayout.LayoutParams(-1, -1));
-        setContentView(screen);
+        mainHandler.removeCallbacks(playbackTicker);
+        progressBar = null; elapsedText = null; durationText = null;
+        trackTitle = null; statusText = null; playButton = null;
+        if (videoView != null) { videoView.pause(); }
+        getWindow().setStatusBarColor(NekoStyle.BG);
+        getWindow().setNavigationBarColor(NekoStyle.BG);
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        int systemUi = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        if (Build.VERSION.SDK_INT >= 26) systemUi |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        getWindow().getDecorView().setSystemUiVisibility(systemUi);
+        homeScreen = new NekoHomeView(this, this::pickAudio, this::pickVideo,
+                this::buildPlayer, this::buildSettings);
+        setContentView(homeScreen);
+        // Android 15 enforces edge-to-edge for target 35: keep controls clear of system bars.
+        if (Build.VERSION.SDK_INT >= 35) {
+            homeScreen.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets bars = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return insets;
+            });
+            homeScreen.requestApplyInsets();
+        }
+        refreshHomePlayback();
     }
 
-    private View homeAction(String icon, String title, String subtitle, int fill, int foreground, Runnable action) {
-        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(16), dp(10), dp(14), dp(10));
-        row.setBackground(cardShape(fill, fill == Color.WHITE ? 0xFFE9E1F3 : fill, 1));
-        TextView badge = label(icon, 27, foreground, Gravity.CENTER); badge.setBackground(cardShape(fill == Color.WHITE ? 0xFFEFEAF9 : 0x568A5CE0, fill, 0));
-        row.addView(badge, new LinearLayout.LayoutParams(dp(72), dp(72)));
-        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.setPadding(dp(14), 0, dp(4), 0);
-        TextView name = label(title, 16, foreground, Gravity.START); name.setTypeface(null, android.graphics.Typeface.BOLD); copy.addView(name);
-        copy.addView(label(subtitle, 13, fill == Color.WHITE ? 0xFF777198 : 0xFFE4D7FF, Gravity.START));
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView arrow = label("›", 28, foreground, Gravity.CENTER); arrow.setBackground(cardShape(fill == Color.WHITE ? Color.WHITE : 0x337A45C6, fill, 0));
-        row.addView(arrow, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        row.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(84)); lp.setMargins(0, dp(4), 0, dp(4)); row.setLayoutParams(lp);
-        return row;
+    private void refreshHomePlayback() {
+        if (homeScreen == null || activeTab != 0) return;
+        if (selectedAudio != null) {
+            homeScreen.setPlayback(displayName(selectedAudio), !audioPrepared ? "Preparando tu canción…"
+                    : isPlaying ? "Reproduciendo ahora · En tu dispositivo" : "En pausa · En tu dispositivo", isPlaying);
+        } else if (selectedVideo != null) {
+            homeScreen.setPlayback(displayName(selectedVideo), "Video seleccionado · Abrir reproductor", false);
+        } else {
+            homeScreen.setPlayback("Aún no hay nada reproduciéndose",
+                    "Tus archivos permanecen en tu dispositivo", false);
+        }
     }
 
     private void buildPlayer() {
+        homeScreen = null;
         activeTab = 1;
         makeScreen();
         addHeader("Tu rincón para escuchar y mirar");
@@ -304,6 +285,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildSettings() {
+        homeScreen = null;
         activeTab = 2;
         makeScreen();
         addHeader("Detalles de tu reproductor");
@@ -311,6 +293,14 @@ public class MainActivity extends Activity {
         appearance.addView(label("Un espacio suave y sin distracciones", 18, ink, Gravity.START));
         appearance.addView(label("Neko Player reproduce archivos de audio y video guardados en tu teléfono.", 14, purple, Gravity.START));
         body.addView(appearance);
+        android.widget.Switch motion = new android.widget.Switch(this);
+        motion.setText("Animaciones del gatito");
+        motion.setTextColor(ink); motion.setTextSize(15);
+        motion.setPadding(dp(16), dp(16), dp(16), dp(16));
+        motion.setChecked(getSharedPreferences("neko_preferences", MODE_PRIVATE).getBoolean("animations", true));
+        motion.setOnCheckedChangeListener((button, enabled) ->
+                getSharedPreferences("neko_preferences", MODE_PRIVATE).edit().putBoolean("animations", enabled).apply());
+        body.addView(motion, new LinearLayout.LayoutParams(-1, -2));
         body.addView(actionButton("↻   Buscar actualizaciones", purple, Color.WHITE, this::showUpdates));
         body.addView(label("La conexión con YouTube y Spotify todavía no está disponible.", 13, ink, Gravity.CENTER));
         setContentView(root);
@@ -346,6 +336,9 @@ public class MainActivity extends Activity {
         private boolean attached;
         DancingCatView(android.content.Context context) { super(context); }
         @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); attached = true; }
+        @Override public void onWindowFocusChanged(boolean focused) {
+            super.onWindowFocusChanged(focused); if (focused) invalidate();
+        }
         @Override protected void onDetachedFromWindow() { attached = false; super.onDetachedFromWindow(); }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
@@ -398,7 +391,7 @@ public class MainActivity extends Activity {
             paint.setColor(outline); canvas.drawCircle(-63, -7 + arm, 9, paint); canvas.drawCircle(64, -8 - arm, 9, paint);
             paint.setColor(cheek); canvas.drawCircle(-63, -7 + arm, 3, paint); canvas.drawCircle(64, -8 - arm, 3, paint);
             canvas.drawLine(-18, 87, -27, 101, paint); canvas.drawLine(18, 87, 27, 101, paint);
-            canvas.restore(); if (attached) postInvalidateDelayed(45);
+            canvas.restore(); if (attached && hasWindowFocus() && NekoStyle.motionEnabled(MainActivity.this)) postInvalidateDelayed(45);
         }
 
         private void drawNote(Canvas canvas, float x, float y, float size) {
@@ -444,12 +437,12 @@ public class MainActivity extends Activity {
                     if (statusText != null) statusText.setText("Reproduciendo ahora");
                     if (progressBar != null) { progressBar.setMax(Math.max(mp.getDuration(), 1)); progressBar.setEnabled(true); }
                     if (durationText != null) durationText.setText(formatTime(mp.getDuration()));
-                    mp.start(); isPlaying = true;
+                    mp.start(); isPlaying = true; refreshHomePlayback();
                     if (playButton != null) playButton.setText("Ⅱ");
                     mainHandler.removeCallbacks(playbackTicker); mainHandler.post(playbackTicker);
                 });
                 player.setOnCompletionListener(mp -> {
-                    isPlaying = false;
+                    isPlaying = false; refreshHomePlayback();
                     if (playButton != null) playButton.setText("▶");
                     if (statusText != null) statusText.setText("Reproducción terminada");
                     mainHandler.removeCallbacks(playbackTicker);
@@ -685,12 +678,18 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (homeScreen != null) homeScreen.setResumed(true);
         if (openingInstallSettings) {
             openingInstallSettings = false;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls()) {
                 installDownloadedUpdate();
             }
         }
+    }
+
+    @Override protected void onPause() {
+        if (homeScreen != null) homeScreen.setResumed(false);
+        super.onPause();
     }
 
     @Override protected void onDestroy() {

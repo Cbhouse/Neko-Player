@@ -1,0 +1,9 @@
+id,screen,feature,priority,clone,notes
+F01,S01,Menú nativo según referencia,must,yes,Verificación visual en dispositivo pendiente
+F02,S01,Selector Android de audio,must,yes,Conectado al flujo existente
+F03,S01,Selector Android de video,must,yes,Conectado al flujo existente
+F04,S01,Navegación inferior y ajustes,must,yes,Barra compartida y etiquetas accesibles
+F05,S01,Estado real de reproducción,must,yes,Vacío o archivo seleccionado
+F06,S01,Logo creado con ImageGen,must,yes,Encabezado y launcher adaptativo
+F07,S01,Animaciones y respuesta táctil,must,yes,Con preferencia persistente y pausa por ciclo de vida
+F08,S01,Integraciones YouTube y Spotify,could,no,Fuera del alcance; aviso informativo
